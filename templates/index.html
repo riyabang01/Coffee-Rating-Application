@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Rating App</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #f7f3ef;
+            color: #3e2723;
+            max-width: 680px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #4e342e;
+        }
+        .box {
+            background: #ffffff;
+            padding: 16px;
+            border-radius: 10px;
+            margin-bottom: 18px;
+            display: flex;
+            gap: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        input, select {
+            padding: 10px;
+            border: 1px solid #d7ccc8;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            flex: 1;
+        }
+        .coffee-card {
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .coffee-info h3 {
+            margin: 0 0 4px 0;
+        }
+        .coffee-info span {
+            font-size: 0.9rem;
+            color: #795548;
+        }
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .vote-count {
+            font-size: 1.2rem;
+            font-weight: bold;
+            min-width: 30px;
+            text-align: center;
+        }
+        button {
+            background-color: #6d4c41;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #4e342e;
+        }
+        .btn-voted {
+            background-color: #2e7d32;
+        }
+        .btn-voted:hover {
+            background-color: #1b5e20;
+        }
+        .btn-delete {
+            background-color: #c62828;
+        }
+        .btn-delete:hover {
+            background-color: #8e0000;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>☕ Coffee Rating Board</h1>
+
+    <div class="box">
+        <input type="text" id="searchInput" onkeyup="filterCoffees()" placeholder="Search coffee...">
+        <select id="roastFilter" onchange="filterCoffees()">
+            <option value="ALL">All Roasts</option>
+            <option value="Light Roast">Light Roast</option>
+            <option value="Medium Roast">Medium Roast</option>
+            <option value="Medium-Dark Roast">Medium-Dark Roast</option>
+            <option value="Dark Roast">Dark Roast</option>
+        </select>
+    </div>
+
+    <div id="coffee-list">
+        {% for coffee in coffees %}
+        {% set is_voted = coffee['id'] in voted_ids %}
+        <div class="coffee-card" id="card-{{ coffee['id'] }}" data-votes="{{ coffee['votes'] }}" data-roast="{{ coffee['roast'] }}">
+            <div class="coffee-info">
+                <h3>{{ coffee['name'] }}</h3>
+                <span>{{ coffee['roast'] }}</span>
+            </div>
+            <div class="actions">
+                <span class="vote-count" id="votes-{{ coffee['id'] }}">{{ coffee['votes'] }}</span>
+                <button 
+                    id="vote-btn-{{ coffee['id'] }}" 
+                    class="{{ 'btn-voted' if is_voted else '' }}"
+                    data-voted="{{ 'true' if is_voted else 'false' }}"
+                    onclick="toggleVote({{ coffee['id'] }})">
+                    {{ '✓ Voted' if is_voted else '▲ Vote' }}
+                </button>
+                <button class="btn-delete" onclick="deleteCoffee({{ coffee['id'] }})">✕</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        async function toggleVote(coffeeId) {
+            const btn = document.getElementById(`vote-btn-${coffeeId}`);
+            const isVoted = btn.dataset.voted === 'true';
+            const endpoint = isVoted ? `/unvote/${coffeeId}` : `/vote/${coffeeId}`;
+
+            btn.disabled = true;
+
+            const response = await fetch(endpoint, { method: 'POST' });
+
+            if (response.ok) {
+                const data = await response.json();
+                document.getElementById(`votes-${coffeeId}`).innerText = data.votes;
+                document.getElementById(`card-${coffeeId}`).dataset.votes = data.votes;
+
+                if (data.voted) {
+                    btn.innerText = "✓ Voted";
+                    btn.classList.add("btn-voted");
+                    btn.dataset.voted = "true";
+                } else {
+                    btn.innerText = "▲ Vote";
+                    btn.classList.remove("btn-voted");
+                    btn.dataset.voted = "false";
+                }
+                sortCards();
+            } else {
+                const err = await response.json();
+                alert(err.error || "Action failed");
+            }
+
+            btn.disabled = false;
+        }
+
+        function sortCards() {
+            const list = document.getElementById('coffee-list');
+            const cards = Array.from(list.getElementsByClassName('coffee-card'));
+            cards.sort((a, b) => Number(b.dataset.votes) - Number(a.dataset.votes));
+            cards.forEach(card => list.appendChild(card));
+        }
+
+        function filterCoffees() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const roast = document.getElementById('roastFilter').value;
+            const cards = document.getElementsByClassName('coffee-card');
+
+            for (let card of cards) {
+                const name = card.querySelector('h3').innerText.toLowerCase();
+                const cardRoast = card.dataset.roast;
+                const matchesSearch = name.includes(search);
+                const matchesRoast = (roast === 'ALL' || cardRoast === roast);
+                card.style.display = (matchesSearch && matchesRoast) ? 'flex' : 'none';
+            }
+        }
+
+        async function deleteCoffee(coffeeId) {
+            const response = await fetch(`/delete/${coffeeId}`, {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                document.getElementById(`card-${coffeeId}`).remove();
+            }
+        }
+    </script>
+
+</body>
+</html>
